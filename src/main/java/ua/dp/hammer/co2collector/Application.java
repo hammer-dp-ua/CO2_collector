@@ -8,9 +8,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableAsync
 @EnableScheduling
-public class Collector {
+public class Application {
 
    public static void main(String[] args) throws Exception {
-      SpringApplication.run(Collector.class, args);
+      SpringApplication.run(Application.class, args);
    }
 }
