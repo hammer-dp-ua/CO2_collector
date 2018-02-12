@@ -13,30 +13,33 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/")
 public class CollectorController {
 
-   public static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+   private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+   private static final Pattern SAVED_DATA_PATTERN = Pattern.compile("^(\\d{2}:\\d{2}):\\d{2} (\\d{3,4})$");
 
    @Autowired
    private Co2SensorBean co2SensorBean;
 
    @GetMapping(path = "/getForThePeriod")
-   public String getDataForThePeriod(@RequestParam("period") Period period) {
+   public Set<Co2Data> getDataForThePeriod(@RequestParam("period") Period period) {
       LocalDateTime currentDateTime = LocalDateTime.now();
-      Path lastFilePath = FileSystems.getDefault().getPath(co2SensorBean.getDataDirLocation(),
-            currentDateTime.format(Co2SensorBean.DATA_FILE_NAME_FORMATTER));
+      String lastFileName = currentDateTime.format(Co2SensorBean.DATA_FILE_NAME_FORMATTER);
+      Path lastFilePath = FileSystems.getDefault().getPath(co2SensorBean.getDataDirLocation(), lastFileName);
       LocalDateTime startDateTime = null;
+      Set<Co2Data> co2Data = new LinkedHashSet<>();
 
       if (period == Period.HOUR) {
          startDateTime = currentDateTime.minusHours(1);
          String startDateTimeShort = startDateTime.format(TIME_FORMATTER);
          boolean getDataFromPrevFile = false;
-         SortedSet<Co2Data> co2Data = new TreeSet<>();
 
          try (BufferedReader br = Files.newBufferedReader(lastFilePath)) {
             String line = br.readLine();
@@ -47,18 +50,38 @@ public class CollectorController {
 
             if (line.startsWith(startDateTimeShort)) {
                getDataFromPrevFile = true;
+               co2Data.add(createCo2DataElement(lastFileName, line));
+            }
 
+            while ((line = br.readLine()) != null) {
+               if (line.startsWith(startDateTimeShort)) {
+                  co2Data.add(createCo2DataElement(lastFileName, line));
+               }
             }
          } catch (IOException e) {
             e.printStackTrace();
          }
       }
-      return "aaa";
+      return co2Data;
    }
 
    @GetMapping(path = "/ports")
    public @ResponseBody String[] getAvailablePorts() {
       return SerialPortList.getPortNames();
+   }
+
+   private Co2Data createCo2DataElement(String date, String line) {
+      if (line == null) {
+         return null;
+      }
+
+      Matcher matcher = SAVED_DATA_PATTERN.matcher(line);
+      if (matcher.find()) {
+         String time = matcher.group(1);
+         String value = matcher.group(2);
+         return new Co2Data(date + "T" + time, Integer.valueOf(value));
+      }
+      return null;
    }
 
    private enum Period {

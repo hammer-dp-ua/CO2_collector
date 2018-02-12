@@ -7,6 +7,11 @@ public class Co2Data {
    private String dateTime;
    private int value;
 
+   public Co2Data(String dateTime, int value) {
+      this.dateTime = dateTime;
+      this.value = value;
+   }
+
    public String getDateTime() {
       return dateTime;
    }
