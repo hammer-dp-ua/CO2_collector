@@ -10,11 +10,22 @@ import ua.dp.hammer.co2collector.utils.CRC16Modbus;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 
 @Component
 public class Co2SensorBean {
 
    private static final int[] READ_CO2 = new int[]{0xFE, 0x04, 0x00, 0x03, 0x00, 0x01, 0xD5, 0xC5};
+   public static final DateTimeFormatter DATA_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
+   public static final DateTimeFormatter DATA_FILE_NAME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
 
    private static SerialPort serialPort = null;
 
@@ -50,6 +61,10 @@ public class Co2SensorBean {
       }
    }
 
+   public String getDataDirLocation() {
+      return "Z:\\IdeaProjects\\CO2_collector\\data";
+   }
+
    private void openPort() {
       try {
          serialPort = new SerialPort("COM3");
@@ -66,17 +81,36 @@ public class Co2SensorBean {
       }
    }
 
-   private static class SerialPortReader implements SerialPortEventListener {
+   private void saveValue(int value) {
+      Path dataDir = FileSystems.getDefault().getPath(getDataDirLocation());
 
+      if (Files.isDirectory(dataDir)) {
+         Path dataFile = FileSystems.getDefault().getPath(getDataDirLocation(),
+               LocalDate.now().format(DATA_FILE_NAME_FORMATTER));
+
+         try (BufferedWriter bw = Files.newBufferedWriter(dataFile, StandardOpenOption.APPEND, StandardOpenOption.WRITE,
+               StandardOpenOption.CREATE)) {
+
+            bw.write(LocalTime.now().format(DATA_TIME_FORMATTER) + " " + value);
+            bw.newLine();
+         } catch (IOException e) {
+            e.printStackTrace();
+         }
+      } else {
+         System.out.println(dataDir.toString() + " doesn't exist");
+      }
+   }
+
+   private class SerialPortReader implements SerialPortEventListener {
+
+      @Override
       public void serialEvent(SerialPortEvent event) {
          if(serialPort != null && event.isRXCHAR()){
             if(event.getEventValue() == 7) { //Check bytes count in the input buffer
                try {
                   int[] received = serialPort.readIntArray(event.getEventValue());
-
                   CRC16Modbus calculatedCrc = new CRC16Modbus();
                   calculatedCrc.update(received, 0, 5);
-
                   int readCrc = received[5];
                   readCrc |= received[6] << 8;
 
@@ -84,6 +118,8 @@ public class Co2SensorBean {
                      int co2Value = received[4];
                      co2Value |= received[3] << 8;
                      System.out.println("CO2 value: " + co2Value);
+
+                     saveValue(co2Value);
                   } else {
                      System.out.println("Wrong CRC value");
                   }
