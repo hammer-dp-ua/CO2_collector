@@ -6,28 +6,42 @@ import jssc.SerialPortEventListener;
 import jssc.SerialPortException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import ua.dp.hammer.co2collector.models.Co2Data;
 import ua.dp.hammer.co2collector.utils.CRC16Modbus;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class Co2SensorBean {
 
    private static final int[] READ_CO2 = new int[]{0xFE, 0x04, 0x00, 0x03, 0x00, 0x01, 0xD5, 0xC5};
-   public static final DateTimeFormatter DATA_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
-   public static final DateTimeFormatter DATA_FILE_NAME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
+   private static final DateTimeFormatter DATA_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
+   private static final DateTimeFormatter DATA_TIME_FORMATTER_SHORT = DateTimeFormatter.ofPattern("HH:mm");
+   private static final DateTimeFormatter DATA_FILE_NAME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
+   private static final Pattern SAVED_DATA_PATTERN = Pattern.compile("^(\\d{2}:\\d{2}):\\d{2} (\\d{3,4})$");
+   static final Comparator FILES_COMPARATOR = new Comparator<Path>() {
+      @Override
+      public int compare(Path o1, Path o2) {
+         return o1.getFileName().toString().compareTo(o2.getFileName().toString());
+      }
+   };
 
    private static SerialPort serialPort = null;
+
+   private String dataDirLocation = "Z:\\IdeaProjects\\CO2_collector\\data";
 
    @PostConstruct
    public void init() {
@@ -46,7 +60,7 @@ public class Co2SensorBean {
       }
    }
 
-   @Scheduled(fixedRate = 10000)
+   @Scheduled(fixedRate = 30000)
    public void readCo2Value() {
       if (serialPort != null && !serialPort.isOpened()) {
          System.out.println("Port is closed");
@@ -61,8 +75,50 @@ public class Co2SensorBean {
       }
    }
 
-   public String getDataDirLocation() {
-      return "Z:\\IdeaProjects\\CO2_collector\\data";
+   public Set<Co2Data> getForHour() {
+      LocalDateTime currentDateTime = LocalDateTime.now();
+      String lastFileName = currentDateTime.format(DATA_FILE_NAME_FORMATTER);
+      Path lastFilePath = FileSystems.getDefault().getPath(dataDirLocation, lastFileName);
+      LocalDateTime startDateTime = currentDateTime.minusHours(1);
+      String startDateTimeShort = startDateTime.format(DATA_TIME_FORMATTER_SHORT);
+      String firstFileName = startDateTime.format(DATA_FILE_NAME_FORMATTER);
+      Set<Co2Data> co2Data = new LinkedHashSet<>();
+      Path dataDirLocationPath = FileSystems.getDefault().getPath(dataDirLocation);
+      SortedSet<Path> files = new TreeSet<Path>(FILES_COMPARATOR);
+
+      try {
+         Files.walkFileTree(dataDirLocationPath, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path filePath, BasicFileAttributes attrs) {
+               if (filePath.getFileName().toString().compareTo(firstFileName) >= 0) {
+                  files.add(filePath);
+               }
+               return FileVisitResult.CONTINUE;
+            }
+         });
+      } catch (IOException e) {
+         e.printStackTrace();
+      }
+
+      for (Path filePath : files) {
+         fillCo2Data(co2Data, filePath, startDateTimeShort);
+      }
+      return co2Data;
+   }
+
+   private void fillCo2Data(Set<Co2Data> co2Data, Path filePath, String startDateTimeShort) {
+      try (BufferedReader br = Files.newBufferedReader(filePath)) {
+         boolean firstFile = co2Data.isEmpty();
+         String line = null;
+
+         while ((line = br.readLine()) != null) {
+            if (nonono !firstFile || line.startsWith(startDateTimeShort)) {
+               co2Data.add(createCo2DataElement(filePath.getFileName().toString(), line));
+            }
+         }
+      } catch (IOException e) {
+         e.printStackTrace();
+      }
    }
 
    private void openPort() {
@@ -82,10 +138,10 @@ public class Co2SensorBean {
    }
 
    private void saveValue(int value) {
-      Path dataDir = FileSystems.getDefault().getPath(getDataDirLocation());
+      Path dataDir = FileSystems.getDefault().getPath(dataDirLocation);
 
       if (Files.isDirectory(dataDir)) {
-         Path dataFile = FileSystems.getDefault().getPath(getDataDirLocation(),
+         Path dataFile = FileSystems.getDefault().getPath(dataDirLocation,
                LocalDate.now().format(DATA_FILE_NAME_FORMATTER));
 
          try (BufferedWriter bw = Files.newBufferedWriter(dataFile, StandardOpenOption.APPEND, StandardOpenOption.WRITE,
@@ -99,6 +155,20 @@ public class Co2SensorBean {
       } else {
          System.out.println(dataDir.toString() + " doesn't exist");
       }
+   }
+
+   private Co2Data createCo2DataElement(String date, String line) {
+      if (line == null) {
+         return null;
+      }
+
+      Matcher matcher = SAVED_DATA_PATTERN.matcher(line);
+      if (matcher.find()) {
+         String time = matcher.group(1);
+         String value = matcher.group(2);
+         return new Co2Data(date + "T" + time, Integer.valueOf(value));
+      }
+      return null;
    }
 
    private class SerialPortReader implements SerialPortEventListener {
