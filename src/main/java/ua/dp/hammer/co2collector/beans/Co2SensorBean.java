@@ -4,6 +4,8 @@ import jssc.SerialPort;
 import jssc.SerialPortEvent;
 import jssc.SerialPortEventListener;
 import jssc.SerialPortException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import ua.dp.hammer.co2collector.models.Co2Data;
@@ -40,12 +42,16 @@ public class Co2SensorBean {
       }
    };
 
-   private static SerialPort serialPort = null;
+   private Environment environment;
 
-   private String dataDirLocation = "Z:\\IdeaProjects\\CO2_collector\\data";
+   private SerialPort serialPort = null;
+   private String dataDirLocation;
+   private String comPort;
 
    @PostConstruct
    public void init() {
+      dataDirLocation = environment.getRequiredProperty("dataDirLocation");
+      comPort = environment.getRequiredProperty("comPort");
       openPort();
    }
 
@@ -180,7 +186,7 @@ public class Co2SensorBean {
 
    private void openPort() {
       try {
-         serialPort = new SerialPort("COM3");
+         serialPort = new SerialPort(comPort);
          serialPort.openPort();
          serialPort.setParams(SerialPort.BAUDRATE_9600,
                SerialPort.DATABITS_8,
@@ -258,5 +264,10 @@ public class Co2SensorBean {
             }
          }
       }
+   }
+
+   @Autowired
+   private void setEnvironment(Environment environment) {
+      this.environment = environment;
    }
 }
