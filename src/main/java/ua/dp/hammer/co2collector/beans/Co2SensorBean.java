@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -77,14 +78,67 @@ public class Co2SensorBean {
 
    public Set<Co2Data> getForHour() {
       LocalDateTime currentDateTime = LocalDateTime.now();
-      String lastFileName = currentDateTime.format(DATA_FILE_NAME_FORMATTER);
-      Path lastFilePath = FileSystems.getDefault().getPath(dataDirLocation, lastFileName);
       LocalDateTime startDateTime = currentDateTime.minusHours(1);
-      String startDateTimeShort = startDateTime.format(DATA_TIME_FORMATTER_SHORT);
+
+      return getCo2Data(currentDateTime, startDateTime);
+   }
+
+   public Set<Co2Data> getForDay() {
+      LocalDateTime currentDateTime = LocalDateTime.now();
+      LocalDateTime startDateTime = currentDateTime.minusDays(1);
+
+      return getCo2Data(currentDateTime, startDateTime);
+   }
+
+   public Set<Co2Data> getForWeek() {
+      LocalDateTime currentDateTime = LocalDateTime.now();
+      LocalDateTime startDateTime = currentDateTime.minusWeeks(1);
+
+      return getCo2Data(currentDateTime, startDateTime);
+   }
+
+   public Set<Co2Data> getForMonth() {
+      LocalDateTime currentDateTime = LocalDateTime.now();
+      LocalDateTime startDateTime = currentDateTime.minusMonths(1);
+
+      return getCo2Data(currentDateTime, startDateTime);
+   }
+
+   public Set<Co2Data> getForYear() {
+      LocalDateTime currentDateTime = LocalDateTime.now();
+      LocalDateTime startDateTime = currentDateTime.minusYears(1);
+
+      return getCo2Data(currentDateTime, startDateTime);
+   }
+
+   public Set<Co2Data> getAll() {
+      LocalDateTime currentDateTime = LocalDateTime.now();
+      LocalDateTime startDateTime = LocalDateTime.of(LocalDate.ofYearDay(2000, 1),
+            LocalTime.MIDNIGHT);
+
+      return getCo2Data(currentDateTime, startDateTime);
+   }
+
+   private Set<Co2Data> getCo2Data(LocalDateTime currentDateTime, LocalDateTime startDateTime) {
+      String startTimeShort = startDateTime.format(DATA_TIME_FORMATTER_SHORT);
+      String endTimeShort = currentDateTime.format(DATA_TIME_FORMATTER_SHORT);
       String firstFileName = startDateTime.format(DATA_FILE_NAME_FORMATTER);
       Set<Co2Data> co2Data = new LinkedHashSet<>();
-      Path dataDirLocationPath = FileSystems.getDefault().getPath(dataDirLocation);
+      AtomicBoolean earlierFilesExist = new AtomicBoolean(false);
+      SortedSet<Path> files = getFiles(firstFileName, earlierFilesExist);
+
+      int i = 1;
+      for (Path filePath : files) {
+         boolean isLastFile = (i == files.size());
+         fillCo2Data(co2Data, filePath, startTimeShort, endTimeShort, isLastFile, earlierFilesExist.get());
+         i++;
+      }
+      return co2Data;
+   }
+
+   private SortedSet<Path> getFiles(String firstFileName, AtomicBoolean earlierFilesExist) {
       SortedSet<Path> files = new TreeSet<Path>(FILES_COMPARATOR);
+      Path dataDirLocationPath = FileSystems.getDefault().getPath(dataDirLocation);
 
       try {
          Files.walkFileTree(dataDirLocationPath, new SimpleFileVisitor<Path>() {
@@ -92,6 +146,8 @@ public class Co2SensorBean {
             public FileVisitResult visitFile(Path filePath, BasicFileAttributes attrs) {
                if (filePath.getFileName().toString().compareTo(firstFileName) >= 0) {
                   files.add(filePath);
+               } else {
+                  earlierFilesExist.set(true);
                }
                return FileVisitResult.CONTINUE;
             }
@@ -99,22 +155,23 @@ public class Co2SensorBean {
       } catch (IOException e) {
          e.printStackTrace();
       }
-
-      for (Path filePath : files) {
-         fillCo2Data(co2Data, filePath, startDateTimeShort);
-      }
-      return co2Data;
+      return files;
    }
 
-   private void fillCo2Data(Set<Co2Data> co2Data, Path filePath, String startDateTimeShort) {
+   private void fillCo2Data(Set<Co2Data> co2Data, Path filePath, String startTimeShort, String endTimeShort,
+                            boolean isLastFile, boolean earlierFilesExist) {
       try (BufferedReader br = Files.newBufferedReader(filePath)) {
-         boolean firstFile = co2Data.isEmpty();
+         boolean isFirstFile = co2Data.isEmpty();
          String line = null;
 
          while ((line = br.readLine()) != null) {
-            if (nonono !firstFile || line.startsWith(startDateTimeShort)) {
-               co2Data.add(createCo2DataElement(filePath.getFileName().toString(), line));
+            if (isFirstFile && earlierFilesExist && line.compareTo(startTimeShort) < 0) {
+               continue;
             }
+            if (isLastFile && line.compareTo(endTimeShort) > 0) {
+               break;
+            }
+            co2Data.add(createCo2DataElement(filePath.getFileName().toString(), line));
          }
       } catch (IOException e) {
          e.printStackTrace();

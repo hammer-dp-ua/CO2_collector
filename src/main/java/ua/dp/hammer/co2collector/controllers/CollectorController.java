@@ -12,7 +12,6 @@ import java.util.Set;
 @RequestMapping("/")
 public class CollectorController {
 
-   @Autowired
    private Co2SensorBean co2SensorBean;
 
    @GetMapping(path = "/getForThePeriod")
@@ -21,6 +20,16 @@ public class CollectorController {
 
       if (period == Period.HOUR) {
          co2Data = co2SensorBean.getForHour();
+      } else if (period == Period.DAY) {
+         co2Data = co2SensorBean.getForDay();
+      } else if (period == Period.WEEK) {
+         co2Data = co2SensorBean.getForWeek();
+      } else if (period == Period.MONTH) {
+         co2Data = co2SensorBean.getForMonth();
+      } else if (period == Period.YEAR) {
+         co2Data = co2SensorBean.getForYear();
+      } else if (period == Period.ALL) {
+         co2Data = co2SensorBean.getAll();
       }
       return co2Data;
    }
@@ -31,6 +40,11 @@ public class CollectorController {
    }
 
    private enum Period {
-      HOUR, DAY, MONTH, YEAR, ALL
+      HOUR, DAY, WEEK, MONTH, YEAR, ALL
+   }
+
+   @Autowired
+   private void setCo2SensorBean(Co2SensorBean co2SensorBean) {
+      this.co2SensorBean = co2SensorBean;
    }
 }
