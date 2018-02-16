@@ -4,6 +4,8 @@ import jssc.SerialPort;
 import jssc.SerialPortEvent;
 import jssc.SerialPortEventListener;
 import jssc.SerialPortException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -30,11 +32,14 @@ import java.util.regex.Pattern;
 @Component
 public class Co2SensorBean {
 
+   private static final Logger LOGGER = LogManager.getLogger(Co2SensorBean.class);
+
    private static final int[] READ_CO2 = new int[]{0xFE, 0x04, 0x00, 0x03, 0x00, 0x01, 0xD5, 0xC5};
    private static final DateTimeFormatter DATA_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
    private static final DateTimeFormatter DATA_TIME_FORMATTER_SHORT = DateTimeFormatter.ofPattern("HH:mm");
    private static final DateTimeFormatter DATA_FILE_NAME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
    private static final Pattern SAVED_DATA_PATTERN = Pattern.compile("^(\\d{2}:\\d{2}):\\d{2} (\\d{3,4})$");
+
    static final Comparator FILES_COMPARATOR = new Comparator<Path>() {
       @Override
       public int compare(Path o1, Path o2) {
@@ -62,7 +67,7 @@ public class Co2SensorBean {
             serialPort.closePort();
             serialPort = null;
          } catch (SerialPortException ex) {
-            System.out.println(ex);
+            LOGGER.error(ex);
          }
       }
    }
@@ -70,14 +75,14 @@ public class Co2SensorBean {
    @Scheduled(fixedRate = 30000)
    public void readCo2Value() {
       if (serialPort != null && !serialPort.isOpened()) {
-         System.out.println("Port is closed");
+         LOGGER.error("Can't read value. COM port is closed");
       }
 
       if (serialPort != null && serialPort.isOpened()) {
          try {
             serialPort.writeIntArray(READ_CO2);
          } catch (SerialPortException ex) {
-            System.out.println(ex);
+            LOGGER.error(ex);
          }
       }
    }
@@ -159,7 +164,7 @@ public class Co2SensorBean {
             }
          });
       } catch (IOException e) {
-         e.printStackTrace();
+         LOGGER.error(e);
       }
       return files;
    }
@@ -180,7 +185,7 @@ public class Co2SensorBean {
             co2Data.add(createCo2DataElement(filePath.getFileName().toString(), line));
          }
       } catch (IOException e) {
-         e.printStackTrace();
+         LOGGER.error(e);
       }
    }
 
@@ -196,7 +201,7 @@ public class Co2SensorBean {
          serialPort.setEventsMask(mask);
          serialPort.addEventListener(new SerialPortReader());
       } catch (SerialPortException ex) {
-         System.out.println(ex);
+         LOGGER.error(ex);
       }
    }
 
@@ -216,7 +221,7 @@ public class Co2SensorBean {
             e.printStackTrace();
          }
       } else {
-         System.out.println(dataDir.toString() + " doesn't exist");
+         LOGGER.error(dataDir.toString() + " doesn't exist");
       }
    }
 
@@ -250,17 +255,18 @@ public class Co2SensorBean {
                   if (readCrc == calculatedCrc.getValue()) {
                      int co2Value = received[4];
                      co2Value |= received[3] << 8;
-                     System.out.println("CO2 value: " + co2Value);
+
+                     LOGGER.debug("CO2 value: " + co2Value);
 
                      saveValue(co2Value);
                   } else {
-                     System.out.println("Wrong CRC value");
+                     LOGGER.error("Wrong CRC value");
                   }
                } catch (SerialPortException ex) {
-                  System.out.println(ex);
+                  LOGGER.error(ex);
                }
             } else {
-               System.out.println("Received " + event.getEventValue() + " bytes");
+               LOGGER.warn("Received " + event.getEventValue() + " bytes");
             }
          }
       }
