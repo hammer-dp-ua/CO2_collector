@@ -1,8 +1,12 @@
 package ua.dp.hammer.co2collector.models;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+
 public class Co2Data {
 
-   //private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
+   private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
 
    private String dateTime;
    private int value;
@@ -10,6 +14,13 @@ public class Co2Data {
    public Co2Data(String dateTime, int value) {
       this.dateTime = dateTime;
       this.value = value;
+   }
+
+   public long getDateTimeMillis() {
+      if (dateTime != null) {
+         return LocalDateTime.parse(dateTime, DATE_TIME_FORMATTER).toEpochSecond(ZoneOffset.UTC) * 1000;
+      }
+      return -1;
    }
 
    public String getDateTime() {

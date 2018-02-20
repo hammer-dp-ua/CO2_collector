@@ -130,6 +130,25 @@ public class Co2SensorBean {
       return getCo2Data(currentDateTime, startDateTime);
    }
 
+   public long[][] convertToArray(Set<Co2Data> co2Data) {
+      if (co2Data == null) {
+         return new long[0][];
+      }
+
+      long[][] returnValue = new long[co2Data.size()][];
+      int i = 0;
+
+      for (Co2Data co2DataElement : co2Data) {
+         long[] element = new long[2];
+
+         element[0] = co2DataElement.getDateTimeMillis();
+         element[1] = co2DataElement.getValue();
+         returnValue[i] = element;
+         i++;
+      }
+      return returnValue;
+   }
+
    private Set<Co2Data> getCo2Data(LocalDateTime currentDateTime, LocalDateTime startDateTime) {
       String startTimeShort = startDateTime.format(DATA_TIME_FORMATTER_SHORT);
       String endTimeShort = currentDateTime.format(DATA_TIME_FORMATTER_SHORT);

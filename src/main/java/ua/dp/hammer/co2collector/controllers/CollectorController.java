@@ -15,7 +15,7 @@ public class CollectorController {
    private Co2SensorBean co2SensorBean;
 
    @GetMapping(path = "/getForThePeriod")
-   public Set<Co2Data> getDataForThePeriod(@RequestParam("period") Period period) {
+   public long[][] getDataForThePeriod(@RequestParam("period") Period period) {
       Set<Co2Data> co2Data = null;
 
       if (period == Period.HOUR) {
@@ -28,10 +28,10 @@ public class CollectorController {
          co2Data = co2SensorBean.getForMonth();
       } else if (period == Period.YEAR) {
          co2Data = co2SensorBean.getForYear();
-      } else if (period == Period.ALL) {
+      } else { // Period.ALL
          co2Data = co2SensorBean.getAll();
       }
-      return co2Data;
+      return co2SensorBean.convertToArray(co2Data);
    }
 
    @GetMapping(path = "/ports")
