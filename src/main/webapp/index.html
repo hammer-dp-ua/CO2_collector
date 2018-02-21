@@ -11,105 +11,17 @@
 </head>
 <body>
 <script src="js/jquery-3.1.1.min.js"></script>
+<script src="js/jquery.cookie.js"></script>
 <div id="container" style="height: 400px; min-width: 310px"></div>
 
 <script src="js/highstock.js"></script>
+<script src="js/app.js"></script>
 <script src="js/modules/exporting.js"></script>
 
 <script type="text/javascript">
 
    $(document).ready(function() {
-   //$.getJSON('https://cdn.rawgit.com/highcharts/highcharts/v6.0.4/samples/data/new-intraday.json', function (data) {
-
-      var options = {
-      // create the chart
-      //Highcharts.stockChart('container', {
-         title: {
-            text: 'CO2 values by minute'
-         },
-
-         subtitle: {
-            //text: 'Using ordinal X axis'
-         },
-
-         xAxis: {
-            gapGridLineWidth: 0
-         },
-         yAxis: {
-            title: {
-               text: 'CO2 (ppm)'
-            },
-            gridLineWidth: 1
-         },
-
-         rangeSelector: {
-            buttons: [{
-               type: 'hour',
-               count: 1,
-               text: '1h'
-            }, {
-               type: 'day',
-               count: 1,
-               text: '1d'
-            }, {
-               type: 'week',
-               count: 1,
-               text: '1w'
-            }, {
-               type: 'month',
-               count: 1,
-               text: '1m'
-            }, {
-               type: 'month',
-               count: 6,
-               text: '6m'
-            }, {
-               type: 'all',
-               count: 1,
-               text: 'All'
-            }],
-            selected: 1,
-            inputEnabled: false
-         },
-
-         series: [{
-            name: 'CO2',
-            type: 'area',
-            gapSize: 5,
-            tooltip: {
-               valueDecimals: 0
-            },
-            fillColor: {
-               linearGradient: {
-                  x1: 0,
-                  y1: 0,
-                  x2: 0,
-                  y2: 1
-               },
-               stops: [
-                  [0, Highcharts.getOptions().colors[0]],
-                  [1, Highcharts.Color(Highcharts.getOptions().colors[0]).setOpacity(0).get('rgba')]
-               ]
-            },
-            threshold: null,
-
-            zones: [{
-               value: 1000
-               //value: 418
-            }, {
-               value: 2000,
-               color: '#ffa500'
-            }, {
-               color: '#ff0000'
-            }]
-         }]
-      };
-
-      $.getJSON('getForThePeriod?period=ALL', function(data) {
-      //$.getJSON('https://cdn.rawgit.com/highcharts/highcharts/v6.0.4/samples/data/new-intraday.json', function(data) {
-         options.series[0].data = data;
-         var chart = new Highcharts.stockChart('container', options);
-      });
+      createChart();
    });
 
 </script>
