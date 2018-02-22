@@ -1,3 +1,5 @@
+var CHART;
+
 function getOptions() {
    return {
       title: {
@@ -14,8 +16,7 @@ function getOptions() {
       yAxis: {
          title: {
             text: 'CO2 (ppm)'
-         }
-         ,
+         },
          gridLineWidth: 1
       },
 
@@ -45,10 +46,9 @@ function getOptions() {
             count: 1,
             text: 'All'
          }],
-         selected:
-            1,
-         inputEnabled:
-            false
+
+         selected: 1,
+         inputEnabled: false
       },
 
       series: [{
@@ -80,19 +80,27 @@ function getOptions() {
             color: '#ffa500'
          }, {
             color: '#ff0000'
-         }]
-      }]
+         }],
+
+         chart: {
+            zoomType: "x"
+         }
+      }],
+
+      chart: {
+         events: {
+            load: requestLastValue
+         }
+      }
    };
 }
-
-var CHART;
 
 function createChart() {
    // https://cdn.rawgit.com/highcharts/highcharts/v6.0.4/samples/data/new-intraday.json
    var initialDataUrlCookie = $.cookie("initialDataUrl");
 
    if (!initialDataUrlCookie) {
-      initialDataUrlCookie = "getForThePeriod?period=ALL";
+      initialDataUrlCookie = "/rest/getForThePeriod?period=ALL";
    }
 
    var options = getOptions();
@@ -108,6 +116,22 @@ function createChart() {
       }
       // create the chart
       CHART = new Highcharts.stockChart('container', options);
+   });
+}
+
+function requestLastValue() {
+   var serie = chart.series[0];
+   var currentData = serie.data;
+   var lastDataElement = (serie && currentData && currentData.length > 0) ? currentData[currentData.length - 1] : null;
+   var lastValueTimestamp = (lastDataElement && typeof lastDataElement[1] === "number") ? lastDataElement[1] : -1;
+
+   $.ajax({
+      url: "/getLastValueDeferred?lastValueTimestamp=" + lastValueTimestamp,
+      success: function(point) {
+         serie.addPoint(point, true, shift);
+         setTimeout(requestLastValue, 1000);
+      },
+      cache: false
    });
 }
 

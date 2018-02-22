@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.async.DeferredResult;
 import ua.dp.hammer.co2collector.models.Co2Data;
 import ua.dp.hammer.co2collector.utils.CRC16Modbus;
 
@@ -23,8 +24,11 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,6 +53,7 @@ public class Co2SensorBean {
 
    private Environment environment;
 
+   private ConcurrentMap<DeferredResult<long[]>, Long> lastDateDeferredResults = new ConcurrentHashMap<>();
    private SerialPort serialPort = null;
    private String dataDirLocation;
    private String comPort;
@@ -124,10 +129,13 @@ public class Co2SensorBean {
 
    public Set<Co2Data> getAll() {
       LocalDateTime currentDateTime = LocalDateTime.now();
-      LocalDateTime startDateTime = LocalDateTime.of(LocalDate.ofYearDay(2000, 1),
-            LocalTime.MIDNIGHT);
+      LocalDateTime startDateTime = LocalDateTime.of(LocalDate.ofYearDay(2000, 1), LocalTime.MIDNIGHT);
 
       return getCo2Data(currentDateTime, startDateTime);
+   }
+
+   public void setLastValueOnUpdate(DeferredResult<long[]> deferredResult, long lastValueTimestamp) {
+      lastDateDeferredResults.put(deferredResult, lastValueTimestamp);
    }
 
    public long[][] convertToArray(Set<Co2Data> co2Data) {
@@ -231,16 +239,57 @@ public class Co2SensorBean {
          Path dataFile = FileSystems.getDefault().getPath(dataDirLocation,
                LocalDate.now().format(DATA_FILE_NAME_FORMATTER));
 
+         updateLastDateDeferredResults(value);
+
          try (BufferedWriter bw = Files.newBufferedWriter(dataFile, StandardOpenOption.APPEND, StandardOpenOption.WRITE,
                StandardOpenOption.CREATE)) {
 
             bw.write(LocalTime.now().format(DATA_TIME_FORMATTER) + " " + value);
             bw.newLine();
          } catch (IOException e) {
-            e.printStackTrace();
+            LOGGER.error(e);
          }
       } else {
          LOGGER.error(dataDir.toString() + " doesn't exist");
+      }
+   }
+
+   private void updateLastDateDeferredResults(int value) {
+      LocalDateTime currentDateTime = LocalDateTime.now();
+      HashSet<DeferredResult<long[]>> processedDeferredResults = new HashSet<>();
+
+      for (DeferredResult<long[]> deferredResult : lastDateDeferredResults.keySet()) {
+         long deferredResultTimestamp = lastDateDeferredResults.get(deferredResult);
+
+         if (deferredResultTimestamp == -1) {
+
+         }
+
+         LocalDateTime deferredResultDateTime = LocalDateTime.ofEpochSecond(deferredResultTimestamp / 1000,
+               0, ZoneOffset.UTC);
+
+         if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Current date/time: " + currentDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) +
+               "; deferred result date/time: " + deferredResultDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+         }
+
+         if (currentDateTime.minusMinutes(1).isAfter(deferredResultDateTime)) {
+            long[] element = new long[2];
+            long currentTimestamp = currentDateTime.toEpochSecond(ZoneOffset.UTC) * 1000;
+
+            element[0] = currentTimestamp;
+            element[1] = value;
+            deferredResult.setResult(element);
+            processedDeferredResults.add(deferredResult);
+
+            if (LOGGER.isDebugEnabled()) {
+               LOGGER.debug("Deferred result is set with " + value + " value");
+            }
+         }
+      }
+
+      for (DeferredResult<long[]> processedDeferredResult : processedDeferredResults) {
+         lastDateDeferredResults.remove(processedDeferredResult);
       }
    }
 

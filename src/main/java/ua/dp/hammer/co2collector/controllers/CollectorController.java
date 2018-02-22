@@ -2,14 +2,18 @@ package ua.dp.hammer.co2collector.controllers;
 
 import jssc.SerialPortList;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.async.DeferredResult;
 import ua.dp.hammer.co2collector.beans.Co2SensorBean;
 import ua.dp.hammer.co2collector.models.Co2Data;
 
 import java.util.Set;
 
 @RestController
-@RequestMapping("/")
+@RequestMapping("/rest")
 public class CollectorController {
 
    private Co2SensorBean co2SensorBean;
@@ -34,8 +38,18 @@ public class CollectorController {
       return co2SensorBean.convertToArray(co2Data);
    }
 
+   /**
+    * @param lastValueTimestamp timestamp in ms, could be -1
+    */
+   @GetMapping(path = "/getLastValueDeferred")
+   public DeferredResult<long[]> getLastValue(@RequestParam("lastValueTimestamp") long lastValueTimestamp) {
+      DeferredResult<long[]> deferredResult = new DeferredResult<>();
+      co2SensorBean.setLastValueOnUpdate(deferredResult, lastValueTimestamp);
+      return deferredResult;
+   }
+
    @GetMapping(path = "/ports")
-   public @ResponseBody String[] getAvailablePorts() {
+   public String[] getAvailablePorts() {
       return SerialPortList.getPortNames();
    }
 
