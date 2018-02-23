@@ -7,7 +7,7 @@ function getOptions() {
       },
 
       subtitle: {
-         text: 'Current value: 0ppm'
+         text: 'Current value: 0ppm; read at 00:00:00'
       },
 
       xAxis: {
@@ -80,16 +80,15 @@ function getOptions() {
             color: '#ffa500'
          }, {
             color: '#ff0000'
-         }],
-
-         chart: {
-            zoomType: "x"
-         }
+         }]
       }],
 
       chart: {
+         zoomType: "x",
          events: {
-            load: requestLastValue
+            load: function() {
+               setTimeout(requestLastValue, 5000);
+            }
          }
       }
    };
@@ -111,8 +110,10 @@ function createChart() {
       if (data.length > 0) {
          var lastElement = data[data.length - 1];
          var lastElementValue = (lastElement && lastElement.length === 2) ? lastElement[1] : null;
+         var lastElementTimestamp = (lastElement && lastElement.length === 2) ? lastElement[0] : null;
 
-         options.subtitle.text = options.subtitle.text.replace(/\d+/, lastElementValue);
+         options.subtitle.text = updateSubtitle(options.subtitle.text, lastElementValue,
+            new Date(lastElementTimestamp + (new Date().getTimezoneOffset() * 60000)));
       }
       // create the chart
       CHART = new Highcharts.stockChart('container', options);
@@ -120,19 +121,65 @@ function createChart() {
 }
 
 function requestLastValue() {
-   var serie = chart.series[0];
+   if (!CHART || !CHART.series) {
+      return;
+   }
+
+   var serie = CHART.series[0];
    var currentData = serie.data;
    var lastDataElement = (serie && currentData && currentData.length > 0) ? currentData[currentData.length - 1] : null;
-   var lastValueTimestamp = (lastDataElement && typeof lastDataElement[1] === "number") ? lastDataElement[1] : -1;
+   var lastValueTimestamp = (lastDataElement && typeof lastDataElement.x === "number") ? lastDataElement.x : -1;
 
    $.ajax({
-      url: "/getLastValueDeferred?lastValueTimestamp=" + lastValueTimestamp,
-      success: function(point) {
-         serie.addPoint(point, true, shift);
-         setTimeout(requestLastValue, 1000);
+      url: "/rest/getLastValueDeferred?lastValueTimestamp=" + lastValueTimestamp,
+      success: function(point, textStatus, jqXHR) {
+         if (!point && point.length !== 2) {
+            throw new Error("Illegal point: " + point);
+         }
+
+         serie.addPoint(point, true, false);
+
+         var timestamp = point[0];
+         var value = point[1];
+         CHART.setSubtitle({text: updateSubtitle(CHART.subtitle.textStr, value,
+               new Date(timestamp + (new Date().getTimezoneOffset() * 60000)))});
       },
+      complete: function(jqXHR, textStatus) {
+         setTimeout(requestLastValue, 60000);
+      },
+      timeout: 60000,
       cache: false
    });
+}
+
+function updateSubtitle(currentText, value, dateObj) {
+   if (!currentText) {
+      return "Current text was empty";
+   }
+   if (!value || value < 0 || typeof value !== "number") {
+      return "Current value was illegal: " + value;
+   }
+   if (!(dateObj instanceof Date)) {
+      return "A date wasn't Date object: " + dateObj;
+   }
+
+   var hours = addZero(dateObj.getHours());
+   var minutes = addZero(dateObj.getMinutes());
+   var seconds = addZero(dateObj.getSeconds());
+   var result = currentText.replace(/\d+/, value);
+
+   result = result.replace(/\d\d:/, hours + ":");
+   result = result.replace(/:\d\d:/, ":" + minutes + ":");
+   result = result.replace(/:\d\d$/, ":" + seconds);
+   return result;
+
+   function addZero(value) {
+      if (value < 10) {
+         return "0" + value;
+      } else {
+         return value;
+      }
+   }
 }
 
 function recreateChart() {

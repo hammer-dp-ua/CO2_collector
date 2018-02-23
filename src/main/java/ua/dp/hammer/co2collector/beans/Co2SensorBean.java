@@ -43,6 +43,8 @@ public class Co2SensorBean {
    private static final DateTimeFormatter DATA_TIME_FORMATTER_SHORT = DateTimeFormatter.ofPattern("HH:mm");
    private static final DateTimeFormatter DATA_FILE_NAME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
    private static final Pattern SAVED_DATA_PATTERN = Pattern.compile("^(\\d{2}:\\d{2}):\\d{2} (\\d{3,4})$");
+   private static final int READ_CO2_VALUE_PERIOD_MS = 10000;
+   private static final int SAVE_CO2_VALUE_PERIOD_MS = 30000;
 
    static final Comparator FILES_COMPARATOR = new Comparator<Path>() {
       @Override
@@ -57,11 +59,17 @@ public class Co2SensorBean {
    private SerialPort serialPort = null;
    private String dataDirLocation;
    private String comPort;
+   private int skipCounter;
 
    @PostConstruct
    public void init() {
       dataDirLocation = environment.getRequiredProperty("dataDirLocation");
       comPort = environment.getRequiredProperty("comPort");
+
+      if (READ_CO2_VALUE_PERIOD_MS > SAVE_CO2_VALUE_PERIOD_MS) {
+         throw new IllegalArgumentException("Saving CO2 value is more frequently than reading");
+      }
+
       openPort();
    }
 
@@ -77,12 +85,13 @@ public class Co2SensorBean {
       }
    }
 
-   @Scheduled(fixedRate = 30000)
+   @Scheduled(fixedRate = READ_CO2_VALUE_PERIOD_MS)
    public void readCo2Value() {
       if (serialPort != null && !serialPort.isOpened()) {
          LOGGER.error("Can't read value. COM port is closed");
       }
 
+      skipCounter++;
       if (serialPort != null && serialPort.isOpened()) {
          try {
             serialPort.writeIntArray(READ_CO2);
@@ -236,18 +245,21 @@ public class Co2SensorBean {
       Path dataDir = FileSystems.getDefault().getPath(dataDirLocation);
 
       if (Files.isDirectory(dataDir)) {
-         Path dataFile = FileSystems.getDefault().getPath(dataDirLocation,
-               LocalDate.now().format(DATA_FILE_NAME_FORMATTER));
-
          updateLastDateDeferredResults(value);
 
-         try (BufferedWriter bw = Files.newBufferedWriter(dataFile, StandardOpenOption.APPEND, StandardOpenOption.WRITE,
-               StandardOpenOption.CREATE)) {
+         if (skipCounter >= SAVE_CO2_VALUE_PERIOD_MS / READ_CO2_VALUE_PERIOD_MS) {
+            Path dataFile = FileSystems.getDefault().getPath(dataDirLocation,
+                  LocalDate.now().format(DATA_FILE_NAME_FORMATTER));
 
-            bw.write(LocalTime.now().format(DATA_TIME_FORMATTER) + " " + value);
-            bw.newLine();
-         } catch (IOException e) {
-            LOGGER.error(e);
+            skipCounter = 0;
+            try (BufferedWriter bw = Files.newBufferedWriter(dataFile, StandardOpenOption.APPEND,
+                  StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
+
+               bw.write(LocalTime.now().format(DATA_TIME_FORMATTER) + " " + value);
+               bw.newLine();
+            } catch (IOException e) {
+               LOGGER.error(e);
+            }
          }
       } else {
          LOGGER.error(dataDir.toString() + " doesn't exist");
@@ -260,13 +272,14 @@ public class Co2SensorBean {
 
       for (DeferredResult<long[]> deferredResult : lastDateDeferredResults.keySet()) {
          long deferredResultTimestamp = lastDateDeferredResults.get(deferredResult);
+         LocalDateTime deferredResultDateTime;
 
-         if (deferredResultTimestamp == -1) {
-
+         if (deferredResultTimestamp > 1000) {
+            deferredResultDateTime = LocalDateTime.ofEpochSecond(deferredResultTimestamp / 1000,
+                  0, ZoneOffset.UTC);
+         } else {
+            deferredResultDateTime = LocalDateTime.MIN;
          }
-
-         LocalDateTime deferredResultDateTime = LocalDateTime.ofEpochSecond(deferredResultTimestamp / 1000,
-               0, ZoneOffset.UTC);
 
          if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Current date/time: " + currentDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) +
@@ -283,7 +296,7 @@ public class Co2SensorBean {
             processedDeferredResults.add(deferredResult);
 
             if (LOGGER.isDebugEnabled()) {
-               LOGGER.debug("Deferred result is set with " + value + " value");
+               LOGGER.debug("Deferred result is set with value " + value);
             }
          }
       }
