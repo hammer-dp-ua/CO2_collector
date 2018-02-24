@@ -2,14 +2,13 @@ package ua.dp.hammer.co2collector.controllers;
 
 import jssc.SerialPortList;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.async.DeferredResult;
 import ua.dp.hammer.co2collector.beans.Co2SensorBean;
 import ua.dp.hammer.co2collector.models.Co2Data;
+import ua.dp.hammer.co2collector.models.SenseAirCommand;
 
+import javax.validation.Valid;
 import java.util.Set;
 
 @RestController
@@ -51,6 +50,13 @@ public class CollectorController {
    @GetMapping(path = "/ports")
    public String[] getAvailablePorts() {
       return SerialPortList.getPortNames();
+   }
+
+   @PostMapping(path = "/command", consumes="application/json")
+   public DeferredResult<int[]> sendCustomCommandToSensor(@Valid @RequestBody SenseAirCommand command) {
+      DeferredResult<int[]> deferredResult = new DeferredResult<>();
+      co2SensorBean.sendCustomCommandToSensor(deferredResult, command);
+      return deferredResult;
    }
 
    private enum Period {

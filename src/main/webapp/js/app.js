@@ -145,7 +145,7 @@ function requestLastValue() {
                new Date(timestamp + (new Date().getTimezoneOffset() * 60000)))});
       },
       complete: function(jqXHR, textStatus) {
-         setTimeout(requestLastValue, 60000);
+         setTimeout(requestLastValue, 90000);
       },
       timeout: 60000,
       cache: false

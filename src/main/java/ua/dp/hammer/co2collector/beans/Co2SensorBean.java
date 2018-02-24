@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.async.DeferredResult;
 import ua.dp.hammer.co2collector.models.Co2Data;
+import ua.dp.hammer.co2collector.models.SenseAirCommand;
 import ua.dp.hammer.co2collector.utils.CRC16Modbus;
 
 import javax.annotation.PostConstruct;
@@ -56,6 +57,7 @@ public class Co2SensorBean {
    private Environment environment;
 
    private ConcurrentMap<DeferredResult<long[]>, Long> lastDateDeferredResults = new ConcurrentHashMap<>();
+   private DeferredResult<int[]> commandDeferredResult;
    private SerialPort serialPort = null;
    private String dataDirLocation;
    private String comPort;
@@ -87,18 +89,7 @@ public class Co2SensorBean {
 
    @Scheduled(fixedRate = READ_CO2_VALUE_PERIOD_MS)
    public void readCo2Value() {
-      if (serialPort != null && !serialPort.isOpened()) {
-         LOGGER.error("Can't read value. COM port is closed");
-      }
-
-      skipCounter++;
-      if (serialPort != null && serialPort.isOpened()) {
-         try {
-            serialPort.writeIntArray(READ_CO2);
-         } catch (SerialPortException ex) {
-            LOGGER.error(ex);
-         }
-      }
+      writeToCom(READ_CO2);
    }
 
    public Set<Co2Data> getForHour() {
@@ -166,6 +157,26 @@ public class Co2SensorBean {
       return returnValue;
    }
 
+   public void sendCustomCommandToSensor(DeferredResult<int[]> deferredResult, SenseAirCommand command) {
+      commandDeferredResult = deferredResult;
+      writeToCom(command.getIntArray());
+   }
+
+   private void writeToCom(int[] array) {
+      boolean allowWrite = (serialPort != null) && serialPort.isOpened();
+
+      skipCounter++;
+      if (allowWrite) {
+         try {
+            serialPort.writeIntArray(array);
+         } catch (SerialPortException ex) {
+            LOGGER.error(ex);
+         }
+      } else {
+         LOGGER.error("Can't read value. COM port is closed");
+      }
+   }
+
    private Set<Co2Data> getCo2Data(LocalDateTime currentDateTime, LocalDateTime startDateTime) {
       String startTimeShort = startDateTime.format(DATA_TIME_FORMATTER_SHORT);
       String endTimeShort = currentDateTime.format(DATA_TIME_FORMATTER_SHORT);
@@ -231,7 +242,7 @@ public class Co2SensorBean {
          serialPort.openPort();
          serialPort.setParams(SerialPort.BAUDRATE_9600,
                SerialPort.DATABITS_8,
-               SerialPort.STOPBITS_1,
+               SerialPort.STOPBITS_2,
                SerialPort.PARITY_NONE);
          int mask = SerialPort.MASK_RXCHAR;
          serialPort.setEventsMask(mask);
@@ -324,32 +335,58 @@ public class Co2SensorBean {
 
       @Override
       public void serialEvent(SerialPortEvent event) {
-         if(serialPort != null && event.isRXCHAR()){
-            if(event.getEventValue() == 7) { //Check bytes count in the input buffer
-               try {
-                  int[] received = serialPort.readIntArray(event.getEventValue());
-                  CRC16Modbus calculatedCrc = new CRC16Modbus();
-                  calculatedCrc.update(received, 0, 5);
-                  int readCrc = received[5];
-                  readCrc |= received[6] << 8;
+         int receivedBytes = event.getEventValue();
+
+         if (serialPort != null && event.isRXCHAR() && receivedBytes > 0) {
+            try {
+
+               int[] receivedData = serialPort.readIntArray(receivedBytes);
+               CRC16Modbus calculatedCrc = new CRC16Modbus();
+               calculatedCrc.update(receivedData, 0, receivedBytes - 2);
+
+               if (receivedBytes == 7) { //Check bytes count in the input buffer
+                  int readCrc = readCrc(receivedData, 7);
 
                   if (readCrc == calculatedCrc.getValue()) {
-                     int co2Value = received[4];
-                     co2Value |= received[3] << 8;
+                     int co2Value = receivedData[4];
+                     co2Value |= receivedData[3] << 8;
 
                      LOGGER.debug("CO2 value: " + co2Value);
 
-                     saveValue(co2Value);
+                     if (commandDeferredResult != null) {
+                        int[] result = Arrays.copyOf(receivedData, receivedBytes);
+
+                        if (readCrc != calculatedCrc.getValue()) {
+                           result[receivedBytes - 1] = -1;
+                           result[receivedBytes - 2] = -1;
+                           LOGGER.error("Wrong CRC value");
+                        }
+                        commandDeferredResult.setResult(result);
+                     } else {
+                        saveValue(co2Value);
+                     }
                   } else {
                      LOGGER.error("Wrong CRC value");
                   }
-               } catch (SerialPortException ex) {
-                  LOGGER.error(ex);
+               } else if (receivedBytes == 8) {
+
+               } else {
+                  LOGGER.warn("Received " + receivedBytes + " bytes");
                }
-            } else {
-               LOGGER.warn("Received " + event.getEventValue() + " bytes");
+
+               if (commandDeferredResult != null) {
+                  commandDeferredResult = null;
+               }
+            } catch (SerialPortException ex) {
+               LOGGER.error(ex);
             }
          }
+      }
+
+      private int readCrc(int[] received, int dataLength) {
+         int readCrc = received[dataLength - 2];
+         readCrc |= received[dataLength - 1] << 8;
+         return readCrc;
       }
    }
 
