@@ -339,37 +339,31 @@ public class Co2SensorBean {
 
          if (serialPort != null && event.isRXCHAR() && receivedBytes > 0) {
             try {
-
                int[] receivedData = serialPort.readIntArray(receivedBytes);
                CRC16Modbus calculatedCrc = new CRC16Modbus();
                calculatedCrc.update(receivedData, 0, receivedBytes - 2);
+               int readCrc = readCrc(receivedData, receivedBytes);
 
-               if (receivedBytes == 7) { //Check bytes count in the input buffer
-                  int readCrc = readCrc(receivedData, 7);
+               if (commandDeferredResult != null) {
+                  int[] result = Arrays.copyOf(receivedData, receivedBytes);
 
+                  if (readCrc != calculatedCrc.getValue()) {
+                     result[receivedBytes - 1] = -1;
+                     result[receivedBytes - 2] = -1;
+                     LOGGER.error("Wrong CRC value: " + Arrays.toString(receivedData));
+                  }
+                  commandDeferredResult.setResult(result);
+               } else if (receivedBytes == 7) { //Check bytes count in the input buffer
                   if (readCrc == calculatedCrc.getValue()) {
                      int co2Value = receivedData[4];
                      co2Value |= receivedData[3] << 8;
 
                      LOGGER.debug("CO2 value: " + co2Value);
 
-                     if (commandDeferredResult != null) {
-                        int[] result = Arrays.copyOf(receivedData, receivedBytes);
-
-                        if (readCrc != calculatedCrc.getValue()) {
-                           result[receivedBytes - 1] = -1;
-                           result[receivedBytes - 2] = -1;
-                           LOGGER.error("Wrong CRC value");
-                        }
-                        commandDeferredResult.setResult(result);
-                     } else {
-                        saveValue(co2Value);
-                     }
+                     saveValue(co2Value);
                   } else {
-                     LOGGER.error("Wrong CRC value");
+                     LOGGER.error("Wrong CRC value: " + Arrays.toString(receivedData));
                   }
-               } else if (receivedBytes == 8) {
-
                } else {
                   LOGGER.warn("Received " + receivedBytes + " bytes");
                }
