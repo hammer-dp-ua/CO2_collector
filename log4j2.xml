@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="INFO" monitorInterval="60">
    <Properties>
-      <Property name="dirpath">Z:/USER/AppData/Local/CO2_logging</Property>
+      <Property name="dirpath">${sys:log4j2DirPath}</Property>
       <Property name="filename">application.log</Property>
       <Property name="patternLayout">%d{DEFAULT} [%t] %logger{36} %line%n%-5level - %msg%n%n</Property>
    </Properties>
@@ -23,14 +23,14 @@
 
    <Loggers>
       <Logger name="ua.dp.hammer" level="DEBUG" additivity="false">
-         <AppenderRef ref="Console"/>
+         <AppenderRef ref="RollingFile"/>
       </Logger>
       <Logger name="org.springframework" level="INFO" additivity="false">
-         <AppenderRef ref="Console"/>
+         <AppenderRef ref="RollingFile"/>
       </Logger>
 
       <Root level="INFO">
-         <AppenderRef ref="Console"/>
+         <AppenderRef ref="RollingFile"/>
       </Root>
    </Loggers>
 </Configuration>

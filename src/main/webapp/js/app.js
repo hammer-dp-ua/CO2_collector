@@ -196,3 +196,12 @@ function setInitialDataUrl(url) {
 function resetInitialDataUrl() {
    $.removeCookie("initialDataUrl");
 }
+
+function SenseAirCommand() {
+   var address;
+   var functionCode;
+   // 16 bits
+   var startingAddress;
+   // 16 bits
+   var data;
+}
