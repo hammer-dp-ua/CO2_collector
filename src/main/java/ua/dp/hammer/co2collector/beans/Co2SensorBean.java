@@ -350,10 +350,10 @@ public class Co2SensorBean {
                   if (readCrc != calculatedCrc.getValue()) {
                      result[receivedBytes - 1] = -1;
                      result[receivedBytes - 2] = -1;
-                     LOGGER.error("Wrong CRC value: " + Arrays.toString(receivedData));
+                     logCrcError(receivedData);
                   }
                   commandDeferredResult.setResult(result);
-               } else if (receivedBytes == 7) { //Check bytes count in the input buffer
+               } else if (receivedBytes == 7) {
                   if (readCrc == calculatedCrc.getValue()) {
                      int co2Value = receivedData[4];
                      co2Value |= receivedData[3] << 8;
@@ -362,7 +362,7 @@ public class Co2SensorBean {
 
                      saveValue(co2Value);
                   } else {
-                     LOGGER.error("Wrong CRC value: " + Arrays.toString(receivedData));
+                     logCrcError(receivedData);
                   }
                } else {
                   LOGGER.warn("Received " + receivedBytes + " bytes");
@@ -381,6 +381,10 @@ public class Co2SensorBean {
          int readCrc = received[dataLength - 2];
          readCrc |= received[dataLength - 1] << 8;
          return readCrc;
+      }
+
+      private void logCrcError(int[] receivedData) {
+         LOGGER.error("Wrong CRC value: " + Arrays.toString(receivedData));
       }
    }
 
