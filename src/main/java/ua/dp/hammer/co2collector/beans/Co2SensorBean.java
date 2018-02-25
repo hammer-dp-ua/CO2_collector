@@ -226,7 +226,12 @@ public class Co2SensorBean {
             if (isLastFile && line.compareTo(endTimeShort) > 0) {
                break;
             }
-            co2Data.add(createCo2DataElement(filePath.getFileName().toString(), line));
+
+            Co2Data data = createCo2DataElement(filePath.getFileName().toString(), line);
+            
+            if (data != null) {
+               co2Data.add(data);
+            }
          }
       } catch (IOException e) {
          LOGGER.error(e);
