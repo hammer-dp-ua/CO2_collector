@@ -20,6 +20,7 @@ import javax.annotation.PreDestroy;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.net.ConnectException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDate;
@@ -71,24 +72,16 @@ public class Co2SensorBean {
       if (READ_CO2_VALUE_PERIOD_MS > SAVE_CO2_VALUE_PERIOD_MS) {
          throw new IllegalArgumentException("Saving CO2 value is more frequently than reading");
       }
-
-      openPort();
    }
 
    @PreDestroy
    public void deInit() {
-      if (serialPort != null) {
-         try {
-            serialPort.closePort();
-            serialPort = null;
-         } catch (SerialPortException ex) {
-            LOGGER.error(ex);
-         }
-      }
+      closePort();
    }
 
    @Scheduled(fixedRate = READ_CO2_VALUE_PERIOD_MS)
    public void readCo2Value() {
+      skipCounter++;
       writeToCom(READ_CO2);
    }
 
@@ -158,23 +151,27 @@ public class Co2SensorBean {
    }
 
    public void sendCustomCommandToSensor(DeferredResult<int[]> deferredResult, SenseAirCommand command) {
-      commandDeferredResult = deferredResult;
-      writeToCom(command.getIntArray());
+      if (writeToCom(command.getIntArray())) {
+         commandDeferredResult = deferredResult;
+      } else {
+         deferredResult.setErrorResult(new ConnectException("Couldn't write to " + comPort + " port"));
+      }
    }
 
-   private void writeToCom(int[] array) {
-      boolean allowWrite = (serialPort != null) && serialPort.isOpened();
+   private boolean writeToCom(int[] array) {
+      boolean success = false;
 
-      skipCounter++;
-      if (allowWrite) {
-         try {
+      try {
+         boolean opened = openPort();
+
+         if (opened) {
             serialPort.writeIntArray(array);
-         } catch (SerialPortException ex) {
-            LOGGER.error(ex);
+            success = true;
          }
-      } else {
-         LOGGER.error("Can't read value. COM port is closed");
+      } catch (SerialPortException ex) {
+         LOGGER.error(ex);
       }
+      return success;
    }
 
    private Set<Co2Data> getCo2Data(LocalDateTime currentDateTime, LocalDateTime startDateTime) {
@@ -236,10 +233,12 @@ public class Co2SensorBean {
       }
    }
 
-   private void openPort() {
+   private boolean openPort() {
+      boolean opened = false;
+
       try {
          serialPort = new SerialPort(comPort);
-         serialPort.openPort();
+         opened = serialPort.openPort();
          serialPort.setParams(SerialPort.BAUDRATE_9600,
                SerialPort.DATABITS_8,
                SerialPort.STOPBITS_2,
@@ -249,6 +248,18 @@ public class Co2SensorBean {
          serialPort.addEventListener(new SerialPortReader());
       } catch (SerialPortException ex) {
          LOGGER.error(ex);
+         opened = false;
+      }
+      return opened;
+   }
+
+   private void closePort() {
+      if (serialPort != null) {
+         try {
+            serialPort.closePort();
+         } catch (SerialPortException ex) {
+            LOGGER.error(ex);
+         }
       }
    }
 
@@ -365,7 +376,7 @@ public class Co2SensorBean {
                      logCrcError(receivedData);
                   }
                } else {
-                  LOGGER.warn("Received " + receivedBytes + " bytes");
+                  LOGGER.warn("Received " + receivedBytes + " bytes: " + Arrays.toString(receivedData));
                }
 
                if (commandDeferredResult != null) {
@@ -373,11 +384,21 @@ public class Co2SensorBean {
                }
             } catch (SerialPortException ex) {
                LOGGER.error(ex);
+            } finally {
+               try {
+                  serialPort.closePort();
+               } catch (SerialPortException ex) {
+                  LOGGER.error(ex);
+               }
             }
          }
       }
 
       private int readCrc(int[] received, int dataLength) {
+         if (received.length < 2) {
+            return -1;
+         }
+
          int readCrc = received[dataLength - 2];
          readCrc |= received[dataLength - 1] << 8;
          return readCrc;
