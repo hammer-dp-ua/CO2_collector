@@ -1,4 +1,5 @@
 var CHART;
+var SUBTITLE_INIT_VALUE = "Current value: 0ppm; read at 00:00:00";
 
 function getOptions() {
    return {
@@ -7,7 +8,7 @@ function getOptions() {
       },
 
       subtitle: {
-         text: 'Current value: 0ppm; read at 00:00:00'
+         text: SUBTITLE_INIT_VALUE
       },
 
       xAxis: {
@@ -156,21 +157,31 @@ function updateSubtitle(currentText, value, dateObj) {
    if (!currentText) {
       return "Current text was empty";
    }
-   if (!value || value < 0 || typeof value !== "number") {
+   if (typeof value !== "number" || value < 0) {
       return "Current value was illegal: " + value;
    }
    if (!(dateObj instanceof Date)) {
       return "A date wasn't Date object: " + dateObj;
    }
 
+   var ppmRe = /\d+ppm/;
+   var hoursRe = /\d\d:/;
+   var minutesRe = /:\d\d:/;
+   var secondsRe = /:\d\d$/;
+
+   if (!(currentText.search(ppmRe) && currentText.search(hoursRe) && currentText.search(minutesRe) &&
+         currentText.search(secondsRe))) {
+      return SUBTITLE_INIT_VALUE;
+   }
+
    var hours = addZero(dateObj.getHours());
    var minutes = addZero(dateObj.getMinutes());
    var seconds = addZero(dateObj.getSeconds());
-   var result = currentText.replace(/\d+/, value);
+   var result = currentText.replace(ppmRe, value + "ppm");
 
-   result = result.replace(/\d\d:/, hours + ":");
-   result = result.replace(/:\d\d:/, ":" + minutes + ":");
-   result = result.replace(/:\d\d$/, ":" + seconds);
+   result = result.replace(hoursRe, hours + ":");
+   result = result.replace(minutesRe, ":" + minutes + ":");
+   result = result.replace(secondsRe, ":" + seconds);
    return result;
 
    function addZero(value) {

@@ -228,7 +228,7 @@ public class Co2SensorBean {
             }
 
             Co2Data data = createCo2DataElement(filePath.getFileName().toString(), line);
-            
+
             if (data != null) {
                co2Data.add(data);
             }
