@@ -272,8 +272,6 @@ public class Co2SensorBean {
       Path dataDir = FileSystems.getDefault().getPath(dataDirLocation);
 
       if (Files.isDirectory(dataDir)) {
-         updateLastDateDeferredResults(value);
-
          if (skipCounter >= SAVE_CO2_VALUE_PERIOD_MS / READ_CO2_VALUE_PERIOD_MS) {
             Path dataFile = FileSystems.getDefault().getPath(dataDirLocation,
                   LocalDate.now().format(DATA_FILE_NAME_FORMATTER));
@@ -376,7 +374,11 @@ public class Co2SensorBean {
 
                      LOGGER.debug("CO2 value: " + co2Value);
 
-                     saveValue(co2Value);
+                     if (co2Value > 0) {
+                        // 0 occurs on sensor turning on
+                        updateLastDateDeferredResults(co2Value);
+                        saveValue(co2Value);
+                     }
                   } else {
                      logCrcError(receivedData);
                   }
